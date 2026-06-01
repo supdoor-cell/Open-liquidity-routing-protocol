@@ -5,30 +5,54 @@
 # LICENSE:     Apache License 2.0 (Open-Source Standard)
 # ============================================================================
 
-import numpy as np
-import time
+import urllib . request
+import json
 
 class FXStabilizerMatrix:
-    def __init__(self):
-        # Master FX Registry: Multi-currency conversion coefficients normalized to an SDR baseline
-        # In production, these fields are updated at line speed via secure APIs
-        self.fx_tensor_coefficients = {
-            "USD": 1.0000,
-            "EUR": 0.9215,
-            "JPY": 156.4200,
-            "GBP": 0.7840
+    def __init__(self,use_live_rates=True):
+        #Fallback hardcoded rats (used if life fetch fails)
+        self._fallback_rates = {
+              "USD": 1.0000,
+              "EUR": 0.9125,
+              "JPY": 156.4200,
+              "GBP":0.7840
         }
+        if use_live_rates:
+           self.fx_tensor_coefficients = self._fetch_live_rates() 
+        else:
+            self.fx_tensor_coefficients = self._fallback_rates
+            print("[FX-WARN] Using hardcoded fallback rates (not live).")
+
+    def _fetch_live_rates(self):
+        """Fetches Live FX rates from a free public API.Falls back to hardcoded if unavailable."""
+        try:
+            url = "https://api.exchangerate-api.com/v4/latest/USD"
+            with urllib.request.urlopen(url, timeout=5) as response:
+                 data = json.loads(response.read())
+            supported = ["USD", "EUR", "JPY","GBP"] 
+            rates  = {ccy: data["rates"][ccy] for ccy in supported}
+            print("[FX-INIT] Live rates fetched succesfully.")
+            return rates
+        except exception as e:
+            print(f"[FX-WARN] Could not fetch live rates ({e}).using fallback rates.")
+            return self._fallback_rates
+            
+            
 
     def normalize_to_baseline(self, denomination, magnitude):
         """Converts raw foreign currencies into unified mathematical units."""
         coefficient = self.fx_tensor_coefficients.get(denomination)
-        if not coefficient: raise ValueError(f"Unsupported Currency Vector: {denomination}")
+        if coefficient is None: 
+            raise ValueError(f"Unsupported Currency Vector: {denomination}") 
+        if magnitude <=0:
+            raise ValueError(f"Amount must be positive, got {magnitude}")
         return magnitude / coefficient
 
     def denominate_from_baseline(self, target_denomination, baseline_magnitude):
         """Re-projects optimized baseline values back to their local currencies."""
         coefficient = self.fx_tensor_coefficients.get(target_denomination)
-        if not coefficient: raise ValueError(f"Unsupported Currency Vector: {target_denomination}")
+        if coefficient is None:
+            raise ValueError(f"Unsupported Currency Vector: {target_denomination}")
         return baseline_magnitude * coefficient
 
     def calculate_cross_border_loop_quanta(self, path_list):
@@ -58,9 +82,9 @@ if __name__ == "__main__":
     # Leg 2: Node B owes Node C €90M EUR
     # Leg 3: Node C owes Node A ¥15B JPY
     simulated_multi_ccy_loop = [
-        {"currency": "USD", "amount": 100000000.0},
-        {"currency": "EUR", "amount": 90000000.0},
-        {"currency": "JPY", "amount": 15000000000.0}
+        {"currency": "USD", "amount": 100_000_000.0},
+        {"currency": "EUR", "amount": 90_000_000.0},
+        {"currency": "JPY", "amount": 15_000_000_000.0}
     ]
     
     delta_sdr = stabilizer.calculate_cross_border_loop_quanta(simulated_multi_ccy_loop)
