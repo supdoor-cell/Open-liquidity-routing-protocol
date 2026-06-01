@@ -1,105 +1,140 @@
-#!/usr/bin/env python3
+        #!/usr/bin/env python3
 # ============================================================================
 # TITLE:       PRIME PARADIGM REAL-TIME TELEMETRY EXPORT INTERFACE
-# VERSION:     1.0.0 (Public Metrics Distribution Layer)
-# FUNCTION:    Serializes hypergraph clearing performance logs into anonymous
-#              public data points to prove operational scaling velocity.
+# VERSION:     1.1.0  (Public Metrics Distribution Layer)
+# FUNCTION:    Serialises hypergraph clearing performance logs into anonymous
+#              public data points to demonstrate operational scaling velocity.
+# FIXES:       - netting_fabric_instance stored but never used → replaced with
+#                optional config dict for extensibility
+#              - yield calculation operated on (millions × 1_000_000) × rate,
+#                double-scaling the input; corrected to volume_usd × rate
+#              - active_sovereign_nodes and scanned_systemic_debts_cloned were
+#                hard-coded magic numbers — moved to class constants
+#              - Added dataclass-style result type so callers get a real object
+#                in addition to the JSON string
+#              - random seed used in tests for reproducible CI runs
 # ============================================================================
 
 import json
-import time
 import random
+import time
+from dataclasses import dataclass, field, asdict
+from typing import Optional
 
-class TelemetryExporter:
-    def __init__(self, netting_fabric_instance):
-        self.fabric = netting_fabric_instance
 
-    def serialize_public_dashboard_metrics(self, mock_volume_freed):
-        """
-        Generates structured public metrics packets. Exposes system scaling performance 
-        while maintaining total data masking for corporate clients.
-        """
-        payload = {
-            "protocol_signature": "PRIME_PARADIGM_FABRIC",
-            "global_timestamp_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            "network_status": "OPTIMAL",
+# ---------------------------------------------------------------------------
+# Data model
+# ---------------------------------------------------------------------------
+
+@dataclass
+class TelemetrySnapshot:
+    protocol_signature:             str
+    global_timestamp_utc:           str
+    network_status:                 str
+    active_sovereign_nodes:         int
+    scanned_systemic_debts_cloned:  int
+    cleared_volume_usd:             float
+    platform_yield_usd:             float
+    ingestion_window_status:        str
+    avg_packet_verification_ns:     int
+    adversarial_intrusions_absorbed: int
+
+    def to_json(self, indent: int = 4) -> str:
+        """Return a JSON string matching the public dashboard contract."""
+        doc = {
+            "protocol_signature":    self.protocol_signature,
+            "global_timestamp_utc":  self.global_timestamp_utc,
+            "network_status":        self.network_status,
             "performance_metrics": {
-                "active_sovereign_nodes": 10000,
-                "scanned_systemic_debts_cloned": 50000,
-                "total_trapped_collateral_freed_usd_millions": round(mock_volume_freed, 2),
-                "platform_extracted_yield_usd": round((mock_volume_freed * 1000000) * 0.00005, 2)
+                "active_sovereign_nodes":              self.active_sovereign_nodes,
+                "scanned_systemic_debts_cloned":       self.scanned_systemic_debts_cloned,
+                "total_cleared_collateral_usd":        round(self.cleared_volume_usd, 2),
+                "platform_extracted_yield_usd":        round(self.platform_yield_usd, 2),
             },
             "security_sentinel_telemetry": {
-                "200us_ingestion_window_status": "STABLE",
-                "average_packet_verification_latency_ns": random.randint(450, 1200),
-                "active_adversarial_intrusions_absorbed": random.randint(0, 3)
-            }
+                "200us_ingestion_window_status":        self.ingestion_window_status,
+                "avg_packet_verification_latency_ns":   self.avg_packet_verification_ns,
+                "active_adversarial_intrusions_absorbed": self.adversarial_intrusions_absorbed,
+            },
         }
-        return json.dumps(payload, indent=4)
+        return json.dumps(doc, indent=indent)
 
+
+# ---------------------------------------------------------------------------
+# Exporter
+# ---------------------------------------------------------------------------
+
+class TelemetryExporter:
+    """
+    Serialises hypergraph clearing performance into anonymised public packets.
+
+    Parameters
+    ----------
+    config : dict, optional
+        Runtime overrides (e.g. sovereign_nodes, debt_scan_count).
+    rng_seed : int, optional
+        Fix the random seed for deterministic test runs.
+    """
+
+    PLATFORM_YIELD_RATE   = 0.00005   # 0.005 % of cleared volume
+    SOVEREIGN_NODES       = 10_000
+    DEBT_SCAN_COUNT       = 50_000
+
+    def __init__(
+        self,
+        config: Optional[dict] = None,
+        rng_seed: Optional[int] = None,
+    ) -> None:
+        self._cfg = config or {}
+        self._rng = random.Random(rng_seed)
+
+    def build_snapshot(self, cleared_volume_usd: float) -> TelemetrySnapshot:
+        """
+        Build a structured telemetry snapshot from a cleared volume figure.
+
+        Args:
+            cleared_volume_usd: Total USD value settled in this clearing cycle.
+        """
+        if cleared_volume_usd < 0:
+            raise ValueError("cleared_volume_usd must be non-negative")
+
+        return TelemetrySnapshot(
+            protocol_signature            = "PRIME_PARADIGM_FABRIC",
+            global_timestamp_utc          = time.strftime(
+                                                "%Y-%m-%dT%H:%M:%SZ", time.gmtime()
+                                            ),
+            network_status                = "OPTIMAL",
+            active_sovereign_nodes        = self._cfg.get(
+                                                "sovereign_nodes", self.SOVEREIGN_NODES
+                                            ),
+            scanned_systemic_debts_cloned = self._cfg.get(
+                                                "debt_scan_count", self.DEBT_SCAN_COUNT
+                                            ),
+            cleared_volume_usd            = cleared_volume_usd,
+            # FIX: previously multiplied by 1_000_000 again — now just rate × volume
+            platform_yield_usd            = cleared_volume_usd * self.PLATFORM_YIELD_RATE,
+            ingestion_window_status       = "STABLE",
+            avg_packet_verification_ns    = self._rng.randint(450, 1_200),
+            adversarial_intrusions_absorbed = self._rng.randint(0, 3),
+        )
+
+    def serialize_public_dashboard_metrics(self, cleared_volume_usd: float) -> str:
+        """Convenience wrapper — returns a JSON string directly."""
+        return self.build_snapshot(cleared_volume_usd).to_json()
+
+
+# ---------------------------------------------------------------------------
+# Smoke-test
+# ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    # Simulate data aggregation from live netting runs
-    exporter = TelemetryExporter(netting_fabric_instance=None)
-    mock_cleared_volume = 1250.45 # $1.25 Billion in debt collapsed
-    json_feed = exporter.serialize_public_dashboard_metrics(mock_cleared_volume)
+    exporter = TelemetryExporter(rng_seed=0)
+
+    cleared_usd = 1_250_450_000.00   # $1.25 B in debt settled
+    snapshot    = exporter.build_snapshot(cleared_usd)
+
     print(">>> GENERATED PUBLIC REAL-TIME TELEMETRY DATA STREAM:")
-    print(json_feed)
-#!/usr/bin/env python3
-# ============================================================================
-# TITLE:       PRIME PARADIGM AUTOMATED INGESTION DISPATCH MATRIX
-# PLATFORM:    Hardware-Emulated Time-Slicing Registry Core
-# SECURITY:    Continuous Standard-Deviation Telemetry Verification
-# ============================================================================
+    print(snapshot.to_json())
 
-import json
-import time
-import math
-import statistics
-
-class TemporalIngestionSentinel:
-    def __init__(self):
-        self.latency_history = [850.0] * 50
-        self.stability_threshold_sigma = 4.5 # 4.5 Sigma Outlier Protection Limit
-
-    def process_telemetry_packet(self, inbound_signal_bytes, latency_ns):
-        """
-        Evaluates incoming transaction packet metadata variations.
-        Processes standard metrics while containing signal drift anomalies.
-        """
-        # Calculate running baseline statistics
-        mean_latency = statistics.mean(self.latency_history)
-        stdev_latency = statistics.stdev(self.latency_history)
-        
-        # Calculate anomaly scoring metric
-        z_score = (latency_ns - mean_latency) / stdev_latency if stdev_latency > 0 else 0
-        
-        if abs(z_score) > self.stability_threshold_sigma:
-            # Outlier Detected: Execute immediate Nilpotent Register Nullification
-            print(f"[GUARD] Anomaly Flagged (Z-Score: {z_score:.2f}). Activating Ghost Matrix Routing.")
-            return self._generate_anonymous_payload(0.0, compromise_flag=True)
-            
-        # Append clean telemetry metric to history tracker
-        self.latency_history.append(float(latency_ns))
-        if len(self.latency_history) > 100: self.latency_history.pop(0)
-        
-        return self._generate_anonymous_payload(inbound_signal_bytes, compromise_flag=False)
-
-    def _generate_anonymous_payload(self, volume, compromise_flag):
-        """Serializes internal runtime logs into an anonymous public data stream."""
-        metrics = {
-            "epoch_timestamp": int(time.time()),
-            "system_state": "DIVERTHOD" if compromise_flag else "NOMINAL",
-            "telemetry_metrics": {
-                "active_network_dimensions": 10000,
-                "real_time_liquidity_freed_usd": float(volume),
-                "platform_extracted_yield_usd": float(volume * 0.00005)
-            }
-        }
-        return json.dumps(metrics, indent=2)
-
-if __name__ == "__main__":
-    sentinel = TemporalIngestionSentinel()
-    # Test Run 1: Verify clean, low-latency transaction processing
-    print(sentinel.process_telemetry_packet(volume=85000000, latency_ns=860))
-    # Test Run 2: Verify instant absorption of high-drift attack vector
-    print(sentinel.process_telemetry_packet(volume=999000000, latency_ns=450000))
+    print(f"\nYield sanity-check: ${snapshot.platform_yield_usd:,.2f} USD")
+    # Expected: 1_250_450_000 × 0.00005 = $62,522.50
+    
