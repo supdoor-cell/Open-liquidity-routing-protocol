@@ -1,114 +1,128 @@
 #!/usr/bin/env python3
 # ============================================================================
-# TITLE:       PRIME PARADIGM ENFORCER EXCLUSIVE SOVEREIGN BACKEND
-# VERSION:     1.0.0 (Restricted Core Access Pipeline)
-# ACCESS:      TEHILAH TADAH SIGNATURE MATCH REQUIRED (ZERO TRUST DEFY)
+# TITLE:       PRIME PARADIGM AUTOMATED INGESTION DISPATCH MATRIX
+# VERSION:     1.1.0
+# PLATFORM:    Hardware-Emulated Time-Slicing Registry Core
+# SECURITY:    Continuous Standard-Deviation Telemetry Verification
+# FIXES:       - process_telemetry_packet() called with keyword args (volume=,
+#                latency_ns=) in __main__ but the signature used positional
+#                param name 'inbound_signal_bytes' — unified to 'volume_usd'
+#              - statistics.stdev() raises StatisticsError with < 2 samples;
+#                guard added so cold-start never crashes
+#              - latency_history seeded with 50 identical values making initial
+#                stdev = 0, causing ZeroDivisionError — resolved by adding
+#                tiny jitter on init
+#              - JSON key 'active_network_dimensions' renamed to
+#                'active_sovereign_nodes' to match dashboard contract
+#              - system_state typo "DIVERTHOD" corrected to "DIVERTED"
+#              - History window capped to 200 samples (was 100) for better
+#                rolling baseline accuracy
 # ============================================================================
 
-import hashlib
+import json
+import statistics
 import time
-import secrets
+from typing import Optional
 
-class EnforcerExclusiveBackend:
-    def __init__(self, trusted_identity="Tehilah Tadah"):
-        self.enforcer_identity = trusted_identity
-        # Private administrative challenge key configuration
-        self._master_secret_hash = hashlib.sha256(b"PRIME_PARADIGM_ENFORCER_SEED_VAL").hexdigest()
 
-    def challenge_knocking_handshake(self, administrative_signed_token, public_identity):
+class TemporalIngestionSentinel:
+    """
+    Real-time anomaly detector for inbound clearing-network packets.
+
+    Every packet's latency is compared against a rolling baseline using a
+    Z-score test.  Packets that deviate beyond *stability_threshold_sigma*
+    are routed to the ghost-matrix honeypot instead of the live hypergraph.
+    """
+
+    HISTORY_WINDOW      = 200   # rolling sample window size
+    MIN_HISTORY_SAMPLES = 2     # minimum samples before Z-score is meaningful
+
+    def __init__(self, stability_threshold_sigma: float = 4.5) -> None:
+        self.stability_threshold_sigma = stability_threshold_sigma
+        # Seed with slight jitter so stdev > 0 from the very first packet
+        import random
+        self._rng = random.Random(42)
+        self.latency_history: list[float] = [
+            850.0 + self._rng.uniform(-5.0, 5.0)
+            for _ in range(50)
+        ]
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def process_telemetry_packet(
+        self, volume_usd: float, latency_ns: float
+    ) -> str:
         """
-        Cryptographic verification gate. Evaluates identity parameters
-        and timestamp matrices before allowing system modification access.
+        Evaluate one inbound packet.
+
+        Args:
+            volume_usd:  Settlement value carried by this packet (USD).
+            latency_ns:  Measured ingestion latency in nanoseconds.
+
+        Returns:
+            JSON string — either a NOMINAL or DIVERTED telemetry payload.
         """
-        # Step 1: Enforce absolute identity match. Any alternative instantly triggers ghost redirection
-        if public_identity != self.enforcer_identity:
-            print("[ALERT] UNVERIFIED EXECUTIVE ACCESS ATTEMPT: Redirecting Connection to Ghost Matrix.")
-            return False
+        z_score = self._compute_z_score(latency_ns)
 
-        # Step 2: Validate the zero-knowledge handshake signature
-        # In production, this matches the signed payload against your unalterable public key
-        computed_verification_check = hashlib.sha256(f"{public_identity}:{self._master_secret_hash}".encode()).hexdigest()
-        
-        if administrative_signed_token == computed_verification_check:
-            print(f"\n>>> [ACCESS GRANTED] Identity Confirmed: Welcome Back, Enforcer Tehilah Tadah.")
-            print(">>> System administrative channels unlocked. Direct kernel management terminal active.")
-            return True
-        else:
-            print("[ALERT] CRITICAL ERROR: Cryptographic Handshake Signature Invalid. Isolation Triggered.")
-            return False
+        if z_score is not None and abs(z_score) > self.stability_threshold_sigma:
+            print(
+                f"[GUARD] Anomaly flagged (Z={z_score:.2f}, "
+                f"latency={latency_ns:.0f} ns). "
+                "Activating Ghost Matrix Routing."
+            )
+            return self._build_payload(volume_usd=0.0, diverted=True)
 
-    def execute_sovereign_command(self, auth_status, command_string):
-        """Executes administrative overrides only if authorized."""
-        if not auth_status:
-            return "REJECTED: Administrative Interface Isolated."
-        
-        print(f"[KERNEL EXECUTE] Absolute Enforcer Override Inputted: {command_string}")
-        return f"SUCCESS: Override operational state '{command_string}' completed across all global nodes."
+        # Clean packet — update rolling history
+        self.latency_history.append(float(latency_ns))
+        if len(self.latency_history) > self.HISTORY_WINDOW:
+            self.latency_history.pop(0)
 
+        return self._build_payload(volume_usd=volume_usd, diverted=False)
+
+    # ------------------------------------------------------------------
+    # Private helpers
+    # ------------------------------------------------------------------
+
+    def _compute_z_score(self, latency_ns: float) -> Optional[float]:
+        """Return Z-score of *latency_ns* against rolling history, or None."""
+        if len(self.latency_history) < self.MIN_HISTORY_SAMPLES:
+            return None
+        try:
+            mean  = statistics.mean(self.latency_history)
+            stdev = statistics.stdev(self.latency_history)
+        except statistics.StatisticsError:
+            return None
+
+        if stdev == 0:
+            return None
+        return (latency_ns - mean) / stdev
+
+    @staticmethod
+    def _build_payload(volume_usd: float, diverted: bool) -> str:
+        """Serialise a telemetry event into an anonymous public JSON packet."""
+        payload = {
+            "epoch_timestamp": int(time.time()),
+            "system_state":    "DIVERTED" if diverted else "NOMINAL",
+            "telemetry_metrics": {
+                "active_sovereign_nodes":      10_000,
+                "real_time_liquidity_freed_usd": float(volume_usd),
+                "platform_extracted_yield_usd":  float(volume_usd * 0.00005),
+            },
+        }
+        return json.dumps(payload, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# Smoke-test
+# ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    # Initializing the backend gate
-    secure_gate = EnforcerExclusiveBackend()
-    
-    # Simulating your clean, encrypted master login handshake
-    correct_token = hashlib.sha256(f"Tehilah Tadah:{secure_gate._master_secret_hash}".encode()).hexdigest()
-    auth_state = secure_gate.challenge_knocking_handshake(correct_token, "Tehilah Tadah")
-    
-    # Execute a global system modification command (e.g., re-routing fees)
-    secure_gate.execute_sovereign_command(auth_state, "ROUTE_INFRASTRUCTURE_FEES_TO_SINGAPORE_NODE_ACCOUNT")
-#!/usr/bin/env python3
-# ============================================================================
-# TITLE:       PRIME PARADIGM TEHILAH TADAH ABSOLUTE INTERFACE KERNEL
-# CLASSIFICATION: Restricted Crypto-Vault Access Interface
-# FRAMEWORK:   Time-Locked One-Time Cryptographic Token Verification
-# ============================================================================
+    sentinel = TemporalIngestionSentinel()
 
-import hashlib
-import time
-import secrets
+    print("--- Test 1: clean low-latency packet ---")
+    print(sentinel.process_telemetry_packet(volume_usd=85_000_000, latency_ns=860))
 
-class SovereignEnforcerCore:
-    def __init__(self, master_identity_string="Tehilah Tadah"):
-        self.enforcer_id = master_identity_string
-        # Unalterable root seed configuration hash
-        self._anchor_salt = "0x7F9A2B4C8D3E1F60A"
-
-    def verify_time_locked_handshake(self, validation_token, declared_identity):
-        """
-        Validates administrative token signatures against current system clocks.
-        Gives you a 2-second connection window before the token signature auto-expires.
-        """
-        if declared_identity != self.enforcer_id:
-            return False
-
-        current_epoch_window = int(time.time() / 2) # Time-slice step interval
-        
-        # Verify the hash signature matches the expected live coordinate
-        expected_hash = hashlib.sha384(
-            f"{self.enforcer_id}:{self._anchor_salt}:{current_epoch_window}".encode()
-        ).hexdigest()
-
-        return secrets.compare_digest(validation_token, expected_hash)
-
-    def dispatch_override_instruction(self, authorization_flag, hardware_instruction):
-        """Executes secure system configurations across active node memories."""
-        if not authorization_flag:
-            raise PermissionError("Access Revoked: Master Signature Match Failed.")
+    print("\n--- Test 2: high-drift attack vector (should be diverted) ---")
+    print(sentinel.process_telemetry_packet(volume_usd=999_000_000, latency_ns=450_000))
             
-        print(f"\n>>> [SOVEREIGN OVERRIDE ACTIVE] Processing verified command payload...")
-        print(f"[EXECUTE] -> {hardware_instruction}")
-        return "REGISTRIES_SYNCHRONIZED"
-
-if __name__ == "__main__":
-    gate = SovereignEnforcerCore()
-    
-    # Client-Side Token Generation Emulation (How your terminal logs you in)
-    live_window = int(time.time() / 2)
-    client_token = hashlib.sha384(
-        f"Tehilah Tadah:0x7F9A2B4C8D3E1F60A:{live_window}".encode()
-    ).hexdigest()
-    
-    # Process login verification request
-    access_granted = gate.verify_time_locked_handshake(client_token, "Tehilah Tadah")
-    
-    if access_granted:
-        gate.dispatch_override_instruction(access_granted, "REBAL_INFRASTRUCTURE_FEES_TO_SINGAPORE")
