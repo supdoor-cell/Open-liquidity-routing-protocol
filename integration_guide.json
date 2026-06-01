@@ -1,0 +1,33 @@
+{
+  "protocol_specification": "PRIME_PARADIGM_INGESTION_CORE",
+  "version": "1.0.0-Alpha-Release",
+  "licensing": "Apache-2.0 (Open-Source, Public Domain Access)",
+  "security_handshake": {
+    "encryption_layer": "Isomorphic-Polynomial-zkSNARK",
+    "verification_window_limit_ns": 200000,
+    "handshake_type": "Time-Locked-Cryptographic-Nonce-Port-Knocking"
+  },
+  "ingestion_endpoints": {
+    "sandbox_gateway_url": "https://primeparadigm.trust",
+    "websocket_telemetry_stream": "wss://metrics.primeparadigm.trust/stream"
+  },
+  "inbound_payload_schemas": {
+    "iso20022_wholesale_credit_transfer": {
+      "header": {
+        "message_id": "STRING_UUID_IDENTIFIER"
+      },
+      "transaction_details": {
+        "debtor_node_id": "INTEGER_VAL_UNPUBLISHED",
+        "creditor_node_id": "INTEGER_VAL_UNPUBLISHED",
+        "interbank_settlement_magnitude": "FLOAT_VAL_MASKED",
+        "currency_code_iso": "STRING_USD_EUR_JPY_GBP"
+      }
+    }
+  },
+  "integration_execution_steps": [
+    "Step 1: Authenticate endpoint utilizing your unique corporate PGP public signature.",
+    "Step 2: Stream outbound payables files formatted to the provided ISO20022 JSON schema.",
+    "Step 3: Monitor the public websocket telemetry stream to watch cycles collapse to zero.",
+    "Step 4: Verify localized balance write-offs without sending fiat wire transactions."
+  ]
+}
